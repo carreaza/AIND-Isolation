@@ -9,6 +9,15 @@ class SearchTimeout(Exception):
     """Subclass base exception for code clarity. """
     pass
 
+def center_distance(game,player):
+    w, h = game.width / 2., game.height / 2.
+    y, x = game.get_player_location(player)
+    return float((h - y) ** 2 + (w - x) ** 2)**(1/2)
+
+def player_distance(game,player):
+    y_opp, x_opp = game.get_player_location(game.get_opponent(player))
+    y, x = game.get_player_location(player)
+    return float((y-y_opp) ** 2 + (x-x_opp) ** 2)**(1/2)
 
 def custom_score(game, player):
     """Calculate the heuristic value of a game state from the point of view
@@ -34,8 +43,10 @@ def custom_score(game, player):
     float
         The heuristic value of the current game state to the specified player.
     """
-    # TODO: finish this function!
-    raise NotImplementedError
+    #my_moves
+    num_moves = float(len(game.get_legal_moves(player)))
+    num_moves_opp = float(len(game.get_legal_moves(game.get_opponent(player))))
+    return float((num_moves - player_distance(game,player) - num_moves_opp))
 
 
 def custom_score_2(game, player):
@@ -60,8 +71,9 @@ def custom_score_2(game, player):
     float
         The heuristic value of the current game state to the specified player.
     """
-    # TODO: finish this function!
-    raise NotImplementedError
+    num_moves = float(len(game.get_legal_moves(player)))
+    num_moves_opp = float(len(game.get_legal_moves(game.get_opponent(player))))
+    return (num_moves - center_distance(game,player) - num_moves_opp)
 
 
 def custom_score_3(game, player):
@@ -86,16 +98,36 @@ def custom_score_3(game, player):
     float
         The heuristic value of the current game state to the specified player.
     """
-    # TODO: finish this function!
-    raise NotImplementedError
 
+    eval_func = 0.0
+
+    num_moves = float(len(game.get_legal_moves(player)))
+    num_moves_opp = float(len(game.get_legal_moves(game.get_opponent(player))))
+    
+#    if(game.move_count < 10):
+#        eval_func += (num_moves - num_moves_opp)
+#    
+#    else:
+#        eval_func += (num_moves - num_moves_opp)
+#        eval_func -= center_distance(game,player)
+    
+    eval_func += (num_moves - center_distance(game,player) - num_moves_opp)        
+    #penalizing for being in the corners
+    corners = [[0,0],[0,1],[1,0],
+               [game.width,game.height],[game.width-1,game.height],[game.width,game.height-1],
+               [game.width,0],[game.width-1,0],[game.width,1],
+               [0,game.height],[0,game.height-1],[1,game.height]]
+    if(game.get_player_location(player) in corners):
+        eval_func -= 4
+        
+    return float(eval_func)
 
 class IsolationPlayer:
     """Base class for minimax and alphabeta agents -- this class is never
     constructed or tested directly.
 
     ********************  DO NOT MODIFY THIS CLASS  ********************
-
+[game.width,game.height],
     Parameters
     ----------
     search_depth : int (optional)
@@ -212,9 +244,71 @@ class MinimaxPlayer(IsolationPlayer):
         if self.time_left() < self.TIMER_THRESHOLD:
             raise SearchTimeout()
 
-        # TODO: finish this function!
-        raise NotImplementedError
+        best_score = float("-inf")
+        best_move = None
+        for m in game.get_legal_moves():
+            
+            # call has been updated with a depth limit
+            v = self.min_value(game.forecast_move(m), depth - 1)
+            if v > best_score:
+                best_score = v
+                best_move = m
+        return best_move
 
+    
+    def min_value(self, game, depth):
+        """ Return the value for a win (+1) if the game is over,
+        otherwise return the minimum value over all legal child
+        nodes.
+        """
+#        if self.time_left() < self.TIMER_THRESHOLD:
+#            raise SearchTimeout()
+            
+        if self.terminal_test(game):
+            return self.score(game,self)  # by Assumption 2
+        
+        # New conditional depth limit cutoff
+        if depth <= 0:  # "==" could be used, but "<=" is safer 
+            return self.score(game,self)
+        
+        v = float("inf")
+        for m in game.get_legal_moves():
+            # the depth should be decremented by 1 on each call
+            v = min(v, self.max_value(game.forecast_move(m), depth - 1))
+        return v        
+    
+    def max_value(self, game, depth):
+        """ Return the value for a loss (-1) if the game is over,
+        otherwise return the maximum value over all legal child
+        nodes.
+        """    
+        if self.time_left() < self.TIMER_THRESHOLD:
+            raise SearchTimeout()
+            
+        if self.terminal_test(game):
+            return self.score(game,self)  # by assumption 2
+        
+        # New conditional depth limit cutoff
+        if depth <= 0:  # "==" could be used, but "<=" is safer 
+            return self.score(game,self) #pass board and player (as self)
+        
+        v = float("-inf")
+        for m in game.get_legal_moves():
+            # the depth should be decremented by 1 on each call
+            v = max(v, self.min_value(game.forecast_move(m), depth - 1))
+        return v
+    
+    def terminal_test(self, game):
+        """ Return True if the game is over for the active player
+        and False otherwise.
+        """
+        if self.time_left() < self.TIMER_THRESHOLD:
+            raise SearchTimeout()        
+        # NOTE: do NOT modify this function
+#        global call_counter #commented out by Carlos on Mar 27: may not be needed
+#        call_counter += 1
+        moves_available = bool(game.get_legal_moves())  # by Assumption 1
+        return not moves_available
 
 class AlphaBetaPlayer(IsolationPlayer):
     """Game-playing agent that chooses a move using iterative deepening minimax
@@ -254,8 +348,21 @@ class AlphaBetaPlayer(IsolationPlayer):
         """
         self.time_left = time_left
 
-        # TODO: finish this function!
-        raise NotImplementedError
+        best_move = (-1, -1)
+        depth_count = 0
+        
+        while(True):
+            try:
+                # The try/except block will automatically catch the exception
+                # raised when the timer is about to expire.
+                best_move = self.alphabeta(game, depth_count)
+                depth_count += 1
+    
+            except SearchTimeout:
+                break
+
+        # Return the best move from the last completed search iteration
+        return best_move
 
     def alphabeta(self, game, depth, alpha=float("-inf"), beta=float("inf")):
         """Implement depth-limited minimax search with alpha-beta pruning as
@@ -304,6 +411,84 @@ class AlphaBetaPlayer(IsolationPlayer):
         """
         if self.time_left() < self.TIMER_THRESHOLD:
             raise SearchTimeout()
+            
+        best_score = float("-inf")
+        best_move = [-1,-1]
+        v, best_move = self.max_value_ab(game, alpha, beta, depth)
+        
+        return best_move
 
-        # TODO: finish this function!
-        raise NotImplementedError
+    
+    def min_value_ab(self, game, alpha, beta, depth):
+        """ Return the value for a win (+1) if the game is over,
+        otherwise return the minimum value over all legal child
+        nodes.
+        """
+        if self.time_left() < self.TIMER_THRESHOLD:
+            raise SearchTimeout()
+            
+        best_move = [-1,-1]
+        
+        if self.terminal_test_ab(game):
+            return self.score(game,self),best_move  # by Assumption 2
+        
+        # New conditional depth limit cutoff
+        if depth <= 0:  # "==" could be used, but "<=" is safer 
+            return self.score(game,self),best_move
+        
+        v = float("inf")
+        
+        for m in game.get_legal_moves():
+
+            value, move =  self.max_value_ab(game.forecast_move(m), alpha, beta, depth-1)
+            #check for best move
+            if(value < v):
+                v = value
+                best_move = m
+            if (v <= alpha):
+                return v, best_move
+            beta = min(beta,v)
+        return v, best_move        
+    
+    def max_value_ab(self, game, alpha, beta, depth):
+        """ Return the value for a loss (-1) if the game is over,
+        otherwise return the maximum value over all legal child
+        nodes.
+        """    
+        if self.time_left() < self.TIMER_THRESHOLD:
+            raise SearchTimeout()
+            
+        best_move = [-1,-1]
+        
+        if self.terminal_test_ab(game):
+            return self.score(game,self), best_move  # by assumption 2
+        
+        # New conditional depth limit cutoff
+        if depth <= 0:  # "==" could be used, but "<=" is safer 
+            return self.score(game,self), best_move #pass board and player (as self)
+        
+        v = float("-inf")
+        
+        for m in game.get_legal_moves():
+            # the depth should be decremented by 1 on each call
+            value, move = self.min_value_ab(game.forecast_move(m),alpha,beta,depth-1)
+            #check for best move
+            if(value > v):
+                v = value
+                best_move = m
+            if (v >= beta):
+                return v, best_move
+            alpha = max(alpha, v)
+        return v, best_move
+    
+    def terminal_test_ab(self, game):
+        """ Return True if the game is over for the active player
+        and False otherwise.
+        """
+        if self.time_left() < self.TIMER_THRESHOLD:
+            raise SearchTimeout()        
+        # NOTE: do NOT modify this function
+#        global call_counter #commented out by Carlos on Mar 27: may not be needed
+#        call_counter += 1
+        moves_available = bool(game.get_legal_moves())  # by Assumption 1
+        return not moves_available
